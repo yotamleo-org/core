@@ -3991,14 +3991,15 @@ def test_convert_content_whitespace_with_attachments() -> None:
 
 
 @pytest.mark.usefixtures("mock_config_entry_with_assist", "mock_init_component")
-async def test_history_conversion_thinking_from_other_agent(
+async def test_history_conversion_thinking_from_earlier_turns(
     hass: HomeAssistant,
     mock_create_stream: AsyncMock,
 ) -> None:
-    """Test thinking blocks are only replayed for the agent's own turns.
+    """Test thinking blocks from earlier turns are not replayed.
 
-    A satellite keeps one conversation across pipelines, so a chat log can hold
-    turns from another agent whose thinking must not be replayed.
+    Their signature is rejected once the system prompt differs, which it does
+    on every turn as it holds the current time, or when another agent sharing
+    the conversation produced them.
     """
     conversation_id = "conversation_id"
     mock_create_stream.return_value = [create_content_block(0, ["Yes, I am sure!"])]
@@ -4026,7 +4027,10 @@ async def test_history_conversion_thinking_from_other_agent(
             conversation.chat_log.AssistantContent(
                 agent_id="conversation.claude_conversation",
                 thinking_content="Another sum.",
-                native=ContentDetails(thinking_signature="own-signature"),
+                native=ContentDetails(
+                    thinking_signature="own-signature",
+                    redacted_thinking="own-redacted",
+                ),
             ),
             conversation.chat_log.AssistantContent(
                 agent_id="conversation.claude_conversation", content="6"
@@ -4045,17 +4049,50 @@ async def test_history_conversion_thinking_from_other_agent(
         {"role": "user", "content": "What is 2+2?"},
         {"role": "assistant", "content": "4"},
         {"role": "user", "content": "And 3+3?"},
-        {
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "thinking",
-                    "thinking": "Another sum.",
-                    "signature": "own-signature",
-                },
-                {"type": "text", "text": "6"},
-            ],
-        },
+        {"role": "assistant", "content": "6"},
         {"role": "user", "content": "Are you sure?"},
         {"role": "assistant", "content": "Yes, I am sure!"},
+    ]
+
+
+def test_convert_content_thinking_in_tool_use_continuation() -> None:
+    """Test thinking blocks of the current turn's tool use loop are replayed."""
+    messages, _ = _convert_content(
+        [
+            conversation.chat_log.UserContent("Turn on the light"),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.claude_conversation",
+                thinking_content="I should call the tool.",
+                native=ContentDetails(
+                    thinking_signature="turn-signature",
+                    redacted_thinking="turn-redacted",
+                ),
+                tool_calls=[
+                    llm.ToolInput(
+                        id="toolu_1", tool_name="HassTurnOn", tool_args={"name": "Lamp"}
+                    )
+                ],
+            ),
+            conversation.chat_log.ToolResultContent(
+                agent_id="conversation.claude_conversation",
+                tool_call_id="toolu_1",
+                tool_name="HassTurnOn",
+                result=llm.ToolResult(data={"success": True}),
+            ),
+        ]
+    )
+
+    assert messages[1]["content"][:3] == [
+        {
+            "type": "thinking",
+            "thinking": "I should call the tool.",
+            "signature": "turn-signature",
+        },
+        {"type": "redacted_thinking", "data": "turn-redacted"},
+        {
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": "HassTurnOn",
+            "input": {"name": "Lamp"},
+        },
     ]

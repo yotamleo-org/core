@@ -1215,11 +1215,6 @@
     dict({
       'content': list([
         dict({
-          'signature': 'ErU/V+ayA==',
-          'thinking': "The user is asking about today's news, which requires current, real-time information. This is clearly something that requires recent information beyond my knowledge cutoff. I should use the web_search tool to find today's news.",
-          'type': 'thinking',
-        }),
-        dict({
           'text': "To get today's news, I'll perform a web search",
           'type': 'text',
         }),
@@ -1326,11 +1321,6 @@
     }),
     dict({
       'content': list([
-        dict({
-          'signature': 'ErU/V+ayA==',
-          'thinking': 'I need to use the web_fetch tool to fetch the latest release notes from the Home Assistant website.',
-          'type': 'thinking',
-        }),
         dict({
           'text': 'Sure, let me check that for you!',
           'type': 'text',
@@ -1466,11 +1456,6 @@
     }),
     dict({
       'content': list([
-        dict({
-          'signature': 'EuQBClkIDBE=',
-          'thinking': 'Let me search for a tool to set humidity.',
-          'type': 'thinking',
-        }),
         dict({
           'id': 'srvtoolu_015vXmtZNASLa7n9RsoDfcBC',
           'input': dict({
