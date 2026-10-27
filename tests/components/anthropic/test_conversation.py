@@ -3994,7 +3994,7 @@ def test_convert_content_thinking_from_other_agent() -> None:
     """Test thinking blocks are only replayed for the agent's own turns.
 
     A satellite keeps one conversation across pipelines, so a chat log can hold
-    turns from another agent whose thinking signatures this model rejects.
+    turns from another agent whose thinking must not be replayed.
     """
     chat_content = [
         conversation.chat_log.UserContent("What is 2+2?"),

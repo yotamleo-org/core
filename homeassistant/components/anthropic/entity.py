@@ -229,8 +229,8 @@ def _convert_content(  # noqa: C901
     """Transform HA chat_log content into Anthropic API format.
 
     Thinking blocks are only replayed for content produced by agent_id, as a
-    thinking signature is only valid for the model that produced it and a chat
-    log can hold turns from several agents.
+    chat log can hold turns from several agents and replaying another agent's
+    thinking signature makes the request fail.
     """
     messages: list[MessageParam] = []
     container_id: str | None = None
