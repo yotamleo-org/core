@@ -3990,39 +3990,58 @@ def test_convert_content_whitespace_with_attachments() -> None:
     ]
 
 
-def test_convert_content_thinking_from_other_agent() -> None:
+@pytest.mark.usefixtures("mock_config_entry_with_assist", "mock_init_component")
+async def test_history_conversion_thinking_from_other_agent(
+    hass: HomeAssistant,
+    mock_create_stream: AsyncMock,
+) -> None:
     """Test thinking blocks are only replayed for the agent's own turns.
 
     A satellite keeps one conversation across pipelines, so a chat log can hold
     turns from another agent whose thinking must not be replayed.
     """
-    chat_content = [
-        conversation.chat_log.UserContent("What is 2+2?"),
-        conversation.chat_log.AssistantContent(
-            agent_id="conversation.other",
-            thinking_content="Simple sum.",
-            native=ContentDetails(
-                thinking_signature="other-signature",
-                redacted_thinking="other-redacted",
+    conversation_id = "conversation_id"
+    mock_create_stream.return_value = [create_content_block(0, ["Yes, I am sure!"])]
+    with (
+        chat_session.async_get_chat_session(
+            hass, conversation_id, context=None
+        ) as session,
+        conversation.async_get_chat_log(hass, session) as chat_log,
+    ):
+        chat_log.content = [
+            conversation.chat_log.SystemContent("You are a helpful assistant."),
+            conversation.chat_log.UserContent("What is 2+2?"),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.other",
+                thinking_content="Simple sum.",
+                native=ContentDetails(
+                    thinking_signature="other-signature",
+                    redacted_thinking="other-redacted",
+                ),
             ),
-        ),
-        conversation.chat_log.AssistantContent(
-            agent_id="conversation.other", content="4"
-        ),
-        conversation.chat_log.UserContent("And 3+3?"),
-        conversation.chat_log.AssistantContent(
-            agent_id="conversation.claude",
-            thinking_content="Another sum.",
-            native=ContentDetails(thinking_signature="own-signature"),
-        ),
-        conversation.chat_log.AssistantContent(
-            agent_id="conversation.claude", content="6"
-        ),
-    ]
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.other", content="4"
+            ),
+            conversation.chat_log.UserContent("And 3+3?"),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.claude_conversation",
+                thinking_content="Another sum.",
+                native=ContentDetails(thinking_signature="own-signature"),
+            ),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.claude_conversation", content="6"
+            ),
+        ]
 
-    messages, _ = _convert_content(chat_content, "conversation.claude")
+        await conversation.async_converse(
+            hass,
+            "Are you sure?",
+            conversation_id,
+            Context(),
+            agent_id="conversation.claude_conversation",
+        )
 
-    assert messages == [
+    assert mock_create_stream.mock_calls[0][2]["messages"] == [
         {"role": "user", "content": "What is 2+2?"},
         {"role": "assistant", "content": "4"},
         {"role": "user", "content": "And 3+3?"},
@@ -4037,4 +4056,6 @@ def test_convert_content_thinking_from_other_agent() -> None:
                 {"type": "text", "text": "6"},
             ],
         },
+        {"role": "user", "content": "Are you sure?"},
+        {"role": "assistant", "content": "Yes, I am sure!"},
     ]
