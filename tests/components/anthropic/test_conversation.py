@@ -3994,6 +3994,7 @@ def test_convert_content_whitespace_with_attachments() -> None:
 async def test_history_conversion_thinking_from_earlier_turns(
     hass: HomeAssistant,
     mock_create_stream: AsyncMock,
+    captured_requests: list[MessageCreateParamsStreaming],
 ) -> None:
     """Test thinking blocks from earlier turns are not replayed.
 
@@ -4045,13 +4046,12 @@ async def test_history_conversion_thinking_from_earlier_turns(
             agent_id="conversation.claude_conversation",
         )
 
-    assert mock_create_stream.mock_calls[0][2]["messages"] == [
+    assert captured_requests[0]["messages"] == [
         {"role": "user", "content": "What is 2+2?"},
         {"role": "assistant", "content": "4"},
         {"role": "user", "content": "And 3+3?"},
         {"role": "assistant", "content": "6"},
         {"role": "user", "content": "Are you sure?"},
-        {"role": "assistant", "content": "Yes, I am sure!"},
     ]
 
 
