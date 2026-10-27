@@ -224,8 +224,14 @@ class ContentDetails:
 
 def _convert_content(  # noqa: C901
     chat_content: Iterable[conversation.Content],
+    agent_id: str | None = None,
 ) -> tuple[list[MessageParam], str | None]:
-    """Transform HA chat_log content into Anthropic API format."""
+    """Transform HA chat_log content into Anthropic API format.
+
+    Thinking blocks are only replayed for content produced by agent_id, as a
+    thinking signature is only valid for the model that produced it and a chat
+    log can hold turns from several agents.
+    """
     messages: list[MessageParam] = []
     container_id: str | None = None
     contents = list(chat_content)
@@ -354,7 +360,8 @@ def _convert_content(  # noqa: C901
                 ]
 
             if isinstance(content.native, ContentDetails):
-                if content.native.thinking_signature:
+                own_thinking = agent_id is None or content.agent_id == agent_id
+                if own_thinking and content.native.thinking_signature:
                     messages[-1]["content"].append(  # type: ignore[union-attr]
                         ThinkingBlockParam(
                             type="thinking",
@@ -362,7 +369,7 @@ def _convert_content(  # noqa: C901
                             signature=content.native.thinking_signature,
                         )
                     )
-                if content.native.redacted_thinking:
+                if own_thinking and content.native.redacted_thinking:
                     messages[-1]["content"].append(  # type: ignore[union-attr]
                         RedactedThinkingBlockParam(
                             type="redacted_thinking",
@@ -954,7 +961,9 @@ class AnthropicBaseLLMEntity(CoordinatorEntity[AnthropicCoordinator]):
                 translation_domain=DOMAIN, translation_key="system_message_not_found"
             )
 
-        messages, container_id = _convert_content(chat_log.content[1:])
+        messages, container_id = _convert_content(
+            chat_log.content[1:], self.entity_id
+        )
 
         model = options[CONF_CHAT_MODEL]
 
@@ -1178,7 +1187,8 @@ class AnthropicBaseLLMEntity(CoordinatorEntity[AnthropicCoordinator]):
                                 async for content in chat_log.async_add_delta_content_stream(
                                     self.entity_id, delta_stream
                                 )
-                            ]
+                            ],
+                            self.entity_id,
                         )
                 finally:
                     delta_stream.trace_usage(chat_log)

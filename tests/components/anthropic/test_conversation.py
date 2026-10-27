@@ -3988,3 +3988,53 @@ def test_convert_content_whitespace_with_attachments() -> None:
     assert messages == [
         {"role": "user", "content": []},
     ]
+
+
+def test_convert_content_thinking_from_other_agent() -> None:
+    """Test thinking blocks are only replayed for the agent's own turns.
+
+    A satellite keeps one conversation across pipelines, so a chat log can hold
+    turns from another agent whose thinking signatures this model rejects.
+    """
+    chat_content = [
+        conversation.chat_log.UserContent("What is 2+2?"),
+        conversation.chat_log.AssistantContent(
+            agent_id="conversation.other",
+            thinking_content="Simple sum.",
+            native=ContentDetails(
+                thinking_signature="other-signature",
+                redacted_thinking="other-redacted",
+            ),
+        ),
+        conversation.chat_log.AssistantContent(
+            agent_id="conversation.other", content="4"
+        ),
+        conversation.chat_log.UserContent("And 3+3?"),
+        conversation.chat_log.AssistantContent(
+            agent_id="conversation.claude",
+            thinking_content="Another sum.",
+            native=ContentDetails(thinking_signature="own-signature"),
+        ),
+        conversation.chat_log.AssistantContent(
+            agent_id="conversation.claude", content="6"
+        ),
+    ]
+
+    messages, _ = _convert_content(chat_content, "conversation.claude")
+
+    assert messages == [
+        {"role": "user", "content": "What is 2+2?"},
+        {"role": "assistant", "content": [{"type": "text", "text": "4"}]},
+        {"role": "user", "content": "And 3+3?"},
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "thinking",
+                    "thinking": "Another sum.",
+                    "signature": "own-signature",
+                },
+                {"type": "text", "text": "6"},
+            ],
+        },
+    ]
