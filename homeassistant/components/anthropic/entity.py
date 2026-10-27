@@ -961,9 +961,7 @@ class AnthropicBaseLLMEntity(CoordinatorEntity[AnthropicCoordinator]):
                 translation_domain=DOMAIN, translation_key="system_message_not_found"
             )
 
-        messages, container_id = _convert_content(
-            chat_log.content[1:], self.entity_id
-        )
+        messages, container_id = _convert_content(chat_log.content[1:], self.entity_id)
 
         model = options[CONF_CHAT_MODEL]
 

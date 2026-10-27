@@ -4024,7 +4024,7 @@ def test_convert_content_thinking_from_other_agent() -> None:
 
     assert messages == [
         {"role": "user", "content": "What is 2+2?"},
-        {"role": "assistant", "content": [{"type": "text", "text": "4"}]},
+        {"role": "assistant", "content": "4"},
         {"role": "user", "content": "And 3+3?"},
         {
             "role": "assistant",
