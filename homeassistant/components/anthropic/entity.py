@@ -225,10 +225,24 @@ class ContentDetails:
 def _convert_content(  # noqa: C901
     chat_content: Iterable[conversation.Content],
 ) -> tuple[list[MessageParam], str | None]:
-    """Transform HA chat_log content into Anthropic API format."""
+    """Transform HA chat_log content into Anthropic API format.
+
+    Thinking blocks are only replayed after the last user message, i.e. for the
+    tool use loop of the current turn. The API does not need them from earlier
+    turns and rejects their signature once the system prompt or the agent that
+    produced them differs.
+    """
     messages: list[MessageParam] = []
     container_id: str | None = None
     contents = list(chat_content)
+    last_user_index = max(
+        (
+            index
+            for index, content in enumerate(contents)
+            if isinstance(content, conversation.UserContent)
+        ),
+        default=-1,
+    )
 
     for index, content in enumerate(contents):
         if isinstance(content, conversation.ToolResultContent):
@@ -354,7 +368,8 @@ def _convert_content(  # noqa: C901
                 ]
 
             if isinstance(content.native, ContentDetails):
-                if content.native.thinking_signature:
+                replay_thinking = index > last_user_index
+                if replay_thinking and content.native.thinking_signature:
                     messages[-1]["content"].append(  # type: ignore[union-attr]
                         ThinkingBlockParam(
                             type="thinking",
@@ -362,7 +377,7 @@ def _convert_content(  # noqa: C901
                             signature=content.native.thinking_signature,
                         )
                     )
-                if content.native.redacted_thinking:
+                if replay_thinking and content.native.redacted_thinking:
                     messages[-1]["content"].append(  # type: ignore[union-attr]
                         RedactedThinkingBlockParam(
                             type="redacted_thinking",

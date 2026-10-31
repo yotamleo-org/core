@@ -3988,3 +3988,111 @@ def test_convert_content_whitespace_with_attachments() -> None:
     assert messages == [
         {"role": "user", "content": []},
     ]
+
+
+@pytest.mark.usefixtures("mock_config_entry_with_assist", "mock_init_component")
+async def test_history_conversion_thinking_from_earlier_turns(
+    hass: HomeAssistant,
+    mock_create_stream: AsyncMock,
+    captured_requests: list[MessageCreateParamsStreaming],
+) -> None:
+    """Test thinking blocks from earlier turns are not replayed.
+
+    Their signature is rejected once the system prompt differs, which it does
+    on every turn as it holds the current time, or when another agent sharing
+    the conversation produced them.
+    """
+    conversation_id = "conversation_id"
+    mock_create_stream.return_value = [create_content_block(0, ["Yes, I am sure!"])]
+    with (
+        chat_session.async_get_chat_session(
+            hass, conversation_id, context=None
+        ) as session,
+        conversation.async_get_chat_log(hass, session) as chat_log,
+    ):
+        chat_log.content = [
+            conversation.chat_log.SystemContent("You are a helpful assistant."),
+            conversation.chat_log.UserContent("What is 2+2?"),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.other",
+                thinking_content="Simple sum.",
+                native=ContentDetails(
+                    thinking_signature="other-signature",
+                    redacted_thinking="other-redacted",
+                ),
+            ),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.other", content="4"
+            ),
+            conversation.chat_log.UserContent("And 3+3?"),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.claude_conversation",
+                thinking_content="Another sum.",
+                native=ContentDetails(
+                    thinking_signature="own-signature",
+                    redacted_thinking="own-redacted",
+                ),
+            ),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.claude_conversation", content="6"
+            ),
+        ]
+
+        await conversation.async_converse(
+            hass,
+            "Are you sure?",
+            conversation_id,
+            Context(),
+            agent_id="conversation.claude_conversation",
+        )
+
+    assert captured_requests[0]["messages"] == [
+        {"role": "user", "content": "What is 2+2?"},
+        {"role": "assistant", "content": "4"},
+        {"role": "user", "content": "And 3+3?"},
+        {"role": "assistant", "content": "6"},
+        {"role": "user", "content": "Are you sure?"},
+    ]
+
+
+def test_convert_content_thinking_in_tool_use_continuation() -> None:
+    """Test thinking blocks of the current turn's tool use loop are replayed."""
+    messages, _ = _convert_content(
+        [
+            conversation.chat_log.UserContent("Turn on the light"),
+            conversation.chat_log.AssistantContent(
+                agent_id="conversation.claude_conversation",
+                thinking_content="I should call the tool.",
+                native=ContentDetails(
+                    thinking_signature="turn-signature",
+                    redacted_thinking="turn-redacted",
+                ),
+                tool_calls=[
+                    llm.ToolInput(
+                        id="toolu_1", tool_name="HassTurnOn", tool_args={"name": "Lamp"}
+                    )
+                ],
+            ),
+            conversation.chat_log.ToolResultContent(
+                agent_id="conversation.claude_conversation",
+                tool_call_id="toolu_1",
+                tool_name="HassTurnOn",
+                result=llm.ToolResult(data={"success": True}),
+            ),
+        ]
+    )
+
+    assert messages[1]["content"][:3] == [
+        {
+            "type": "thinking",
+            "thinking": "I should call the tool.",
+            "signature": "turn-signature",
+        },
+        {"type": "redacted_thinking", "data": "turn-redacted"},
+        {
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": "HassTurnOn",
+            "input": {"name": "Lamp"},
+        },
+    ]
